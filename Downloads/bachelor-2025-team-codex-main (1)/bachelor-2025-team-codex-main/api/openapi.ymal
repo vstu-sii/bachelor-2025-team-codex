@@ -1,0 +1,64 @@
+    post:
+      summary: Rate a card (0–5) for SM-2 scheduling
+      parameters:
+        - name: card_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                rating:
+                  type: integer
+                  minimum: 0
+                  maximum: 5
+              required: [rating]
+      responses:
+        '200':
+          description: Review recorded
+
+  /stats/dashboard:
+    get:
+      summary: Get user progress stats
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: Dashboard data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  cards_reviewed_today:
+                    type: integer
+                  accuracy_percent:
+                    type: number
+                  streak_days:
+                    type: integer
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Card:
+      type: object
+      properties:
+        id:
+          type: string
+        question:
+          type: string
+        answer:
+          type: string
+        next_review_date:
+          type: string
+          format: date

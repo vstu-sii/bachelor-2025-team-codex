@@ -1,0 +1,26 @@
+# User Flows — AUTO-FLASHCARDS (Text-Based)
+
+## Student Flow
+1. Login as Student
+2. Upload PDF (≤50MB, EN/RU)
+3. System processes: OCR → LLM → generates 15–30 cards
+4. Notification: "✅ 27 flashcards ready!"
+5. Click "Review Today"
+6. For each card:
+   - See Question
+   - Click "Show Answer"
+   - Rate recall: [0] [1] [2] [3] [4] [5]
+7. After review → Dashboard shows:
+   - Cards reviewed today: 30
+   - Accuracy: 87%
+   - Streak: 5 days
+
+## Teacher Flow
+1. Login as Teacher
+2. Upload PDF
+3. Generate cards
+4. Click "Share Deck"
+5. System generates shareable link
+6. Students use link → access deck → review as usual
+
+> Based on: D1 (Use-Cases), requirements.md (FR-1, FR-3, FR-7, FR-9), roadmap.md (E3)

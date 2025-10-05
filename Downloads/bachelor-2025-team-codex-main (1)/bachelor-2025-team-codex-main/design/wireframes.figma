@@ -1,0 +1,35 @@
+# Wireframes — AUTO-FLASHCARDS (Text-Based)
+
+## 1. Login / Register Screen
+- Fields:
+  • Email: [________________________]
+  • Password: [________________________]
+- Buttons:
+  • [Sign In]
+  • [Sign Up as Student]
+  • [Sign Up as Teacher]
+
+## 2. Upload PDF Screen
+- Title: "Upload Lecture PDF"
+- Drop Zone:
+  • 📎 Drag & Drop PDF here (≤50MB, EN/RU)
+  • [Browse Files]
+- Note: "Scanned PDFs supported (OCR enabled)"
+
+## 3. Flashcard Review Screen
+- Question:  
+  "What is cognitive load?"
+- Button: [Show Answer]
+- After click → Answer appears:  
+  "The total amount of mental effort in working memory."
+- Rating: [0] [1] [2] [3] [4] [5] ← (user selects one)
+
+## 4. Dashboard (Progress)
+- Title: "Your Progress"
+- Stats:
+  • 📚 Cards reviewed today: 30
+  • ✅ Accuracy: 87%
+  • 🔥 Streak: 5 days
+- Button: [Review Today]
+
+> Based on: requirements.md (FR-1, FR-6, FR-7, FR-8), roadmap.md (E3)
