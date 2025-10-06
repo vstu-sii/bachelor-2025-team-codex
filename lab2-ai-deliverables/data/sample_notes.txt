@@ -1,0 +1,4 @@
+Cognitive Load Theory (CLT) explains limits of working memory.
+Intrinsic load is tied to task complexity; extraneous load comes from poor instructional design.
+Segmenting content and using dual‑coding (text + visuals) can improve learning outcomes.
+Spaced repetition strengthens long‑term retention by revisiting material over increasing intervals.
