@@ -1,0 +1,37 @@
+{
+  "id": null,
+  "title": "LLM Performance Dashboard",
+  "timezone": "browser",
+  "panels": [
+    {
+      "type": "graph",
+      "title": "LLM Response Latency (seconds)",
+      "targets": [
+        {
+          "expr": "rate(llm_response_duration_seconds_sum[1m]) / rate(llm_response_duration_seconds_count[1m])",
+          "legendFormat": "avg latency"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "Tokens Generated per Request",
+      "targets": [
+        {
+          "expr": "rate(llm_generated_tokens_total[1m]) / rate(llm_requests_total[1m])",
+          "legendFormat": "tokens/request"
+        }
+      ]
+    },
+    {
+      "type": "graph",
+      "title": "LLM Error Rate (%)",
+      "targets": [
+        {
+          "expr": "rate(llm_requests_failed_total[5m]) / rate(llm_requests_total[5m]) * 100",
+          "legendFormat": "error rate"
+        }
+      ]
+    }
+  ]
+}

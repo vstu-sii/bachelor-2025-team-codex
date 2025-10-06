@@ -1,0 +1,94 @@
+version: "3.9"
+
+services:
+  # ==================================================
+  #  Langfuse - LLM tracing & analytics
+  # ==================================================
+  langfuse:
+    image: ghcr.io/langfuse/langfuse:latest
+    container_name: langfuse
+    restart: always
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/langfuse
+      - PORT=3001
+      - NEXTAUTH_SECRET=devsecret123
+      - NEXTAUTH_URL=http://localhost:3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - db
+
+  # ==================================================
+  #  PostgreSQL (للـ Langfuse)
+  # ==================================================
+  db:
+    image: postgres:15
+    container_name: monitoring_db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=langfuse
+    volumes:
+      - monitoring_data:/var/lib/postgresql/data
+
+  # ==================================================
+  #  Prometheus - metrics collection
+  # ==================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    restart: always
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  # ==================================================
+  #  Grafana - dashboards
+  # ==================================================
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    restart: always
+    ports:
+      - "3002:3000"
+    depends_on:
+      - prometheus
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./dashboards:/var/lib/grafana/dashboards
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/system-overview.json
+
+  # ==================================================
+  #  Loki - logs aggregation
+  # ==================================================
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    restart: always
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+
+  # ==================================================
+  #  Promtail - sends logs to Loki
+  # ==================================================
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    restart: always
+    volumes:
+      - /var/log:/var/log
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+volumes:
+  monitoring_data:
+  grafana_data:

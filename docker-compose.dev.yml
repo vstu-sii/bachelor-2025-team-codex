@@ -1,0 +1,83 @@
+version: "3.9"
+
+services:
+  # Frontend - Next.js App
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: nextjs_app
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Backend - Node.js (Express)
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: express_api
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/app_db
+      - LLM_SERVICE_URL=http://llm:5000
+    depends_on:
+      - db
+      - llm
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    command: npm run dev
+
+  # Database - PostgreSQL
+  db:
+    image: postgres:15
+    container_name: postgres_db
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=app_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+
+    # 🤖 LLM Service - llama.cpp
+  llm:
+    image: ghcr.io/abetlen/llama-cpp-python:latest
+    container_name: llama_service
+    ports:
+      - "5000:5000"
+    environment:
+      - MODEL=/models/llama-2-7b.Q4_K_M.gguf
+    volumes:
+      - ./models:/models
+    command: >
+      python3 -m llama_cpp.server
+      --model ${MODEL}
+      --host 0.0.0.0
+      --port 5000
+
+
+  # Jupyter Lab for experiments
+  jupyter:
+    image: jupyter/base-notebook:latest
+    container_name: jupyter_lab
+    volumes:
+      - ./notebooks:/home/jovyan/work
+    ports:
+      - "8888:8888"
+    environment:
+      - JUPYTER_TOKEN=dev123
+
+volumes:
+  pg_data:
