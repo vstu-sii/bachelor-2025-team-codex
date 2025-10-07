@@ -1,83 +1,127 @@
 version: "3.9"
 
 services:
-  # Frontend - Next.js App
+  # ========================================
+  # 💻 FRONTEND — Next.js
+  # ========================================
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    container_name: nextjs_app
+    container_name: auto-flashcards-frontend
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=http://localhost:8000
+    env_file:
+      - .env
     depends_on:
       - backend
     volumes:
       - ./frontend:/app
-      - /app/node_modules
     command: npm run dev
+    networks:
+      - auto-flashcards-net
 
-  # Backend - Node.js (Express)
+  # ========================================
+  # 🧠 BACKEND — FastAPI
+  # ========================================
   backend:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: express_api
+    container_name: auto-flashcards-backend
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/app_db
-      - LLM_SERVICE_URL=http://llm:5000
+    env_file:
+      - .env
     depends_on:
       - db
       - llm
     volumes:
       - ./backend:/app
-      - /app/node_modules
-    command: npm run dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    networks:
+      - auto-flashcards-net
 
-  # Database - PostgreSQL
+  # ========================================
+  # 🗄️ DATABASE — PostgreSQL
+  # ========================================
   db:
     image: postgres:15
-    container_name: postgres_db
+    container_name: auto-flashcards-db
     restart: always
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=app_db
+    env_file:
+      - .env
     ports:
       - "5432:5432"
     volumes:
       - pg_data:/var/lib/postgresql/data
+    networks:
+      - auto-flashcards-net
 
-    # 🤖 LLM Service - llama.cpp
+  # ========================================
+  # 🤖 LLM SERVICE — llama.cpp
+  # ========================================
   llm:
     image: ghcr.io/abetlen/llama-cpp-python:latest
-    container_name: llama_service
+    container_name: auto-flashcards-llm
     ports:
       - "5000:5000"
-    environment:
-      - MODEL=/models/llama-2-7b.Q4_K_M.gguf
     volumes:
       - ./models:/models
+    environment:
+      MODEL: /models/llama-2-7b.Q4_K_M.gguf
     command: >
       python3 -m llama_cpp.server
       --model ${MODEL}
       --host 0.0.0.0
       --port 5000
+    networks:
+      - auto-flashcards-net
 
+  # ========================================
+  # 📊 MONITORING — Prometheus & Grafana
+  # ========================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+    networks:
+      - auto-flashcards-net
 
-  # Jupyter Lab for experiments
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - auto-flashcards-net
+
+  # ========================================
+  # 🧪 JUPYTER LAB (optional)
+  # ========================================
   jupyter:
     image: jupyter/base-notebook:latest
-    container_name: jupyter_lab
-    volumes:
-      - ./notebooks:/home/jovyan/work
+    container_name: jupyter-lab
     ports:
       - "8888:8888"
+    volumes:
+      - ./notebooks:/home/jovyan/work
     environment:
-      - JUPYTER_TOKEN=dev123
+      JUPYTER_TOKEN: dev123
+    networks:
+      - auto-flashcards-net
 
+# ========================================
+# 📦 VOLUMES & NETWORK
+# ========================================
 volumes:
   pg_data:
+
+networks:
+  auto-flashcards-net:
+    driver: bridge

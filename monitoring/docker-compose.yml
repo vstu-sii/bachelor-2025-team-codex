@@ -92,3 +92,7 @@ services:
 volumes:
   monitoring_data:
   grafana_data:
+
+networks:
+  auto-flashcards-net:
+    external: true
