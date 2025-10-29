@@ -1,0 +1,86 @@
+@startuml
+' ===== Auto-Flashcards — System Context (Plain, Clear 3-Column Layout | Student only) =====
+skinparam shadowing false
+skinparam linetype ortho
+skinparam ArrowThickness 1
+skinparam dpi 180
+skinparam rectangleFontSize 12
+skinparam rectangleStereotypeFontSize 11
+skinparam packageStyle rectangle
+title Auto-Flashcards — System Context (Students only)
+
+' ---------- Column 1: Actors ----------
+left to right direction
+rectangle "Actors" as ACTORS #FFFFFF {
+  actor "Student" as STUDENT
+}
+
+' ---------- Column 2: Product Boundary (System) ----------
+rectangle "<b>Auto-Flashcards (Product Boundary)</b>\n[enterprise]" as PROD #FFFFFF;line.dashed {
+  rectangle "<b>Auto-Flashcards System</b>\nGenerates Q/A (LLM), SRS sessions,\nanalytics, profile" as AF #1E88E5;line:black;text:white
+}
+
+' ---------- Column 3: External Providers (grouped) ----------
+package "Identity & Storage" as ID_STORE {
+  cloud "Auth / IdP\n(OIDC/OAuth)" as AUTH #EEEEEE
+  cloud "Object Storage\n(Source files & artifacts)" as STORE #F5F5F5
+}
+package "AI Services" as AI_SVCS {
+  cloud "LLM Provider\n(Q/A generation, concepts)" as LLM #EDE7F6
+  cloud "OCR Provider\n(Text extraction from PDFs/images)" as OCR #EDE7F6
+}
+package "Ops & Delivery" as OPS {
+  cloud "Notification Service\n(Email/Push)" as NOTIFY #F5F5F5
+  cloud "Monitoring/Tracing\n(Metrics, logs, LLM tracing)" as OBS #F5F5F5
+  cloud "Billing/Cost Tracker\n(LLM cost attribution)" as BILL #F5F5F5
+  cloud "CDN\n(Static assets)" as CDN #F5F5F5
+}
+
+' ---------- Hidden guides to keep a clean grid ----------
+ACTORS  -[hidden]> PROD
+PROD    -[hidden]> ID_STORE
+ID_STORE -[hidden]> AI_SVCS
+AI_SVCS -[hidden]> OPS
+AUTH    -[hidden]> STORE
+LLM     -[hidden]> OCR
+NOTIFY  -[hidden]> OBS
+OBS     -[hidden]> BILL
+BILL    -[hidden]> CDN
+
+' ---------- Relationships (short labels) ----------
+STUDENT --> AF    : F1
+AF --> AUTH       : F3
+AF --> LLM        : F4
+AF --> OCR        : F5
+AF --> STORE      : F6
+AF --> NOTIFY     : F7
+AF --> OBS        : MTR
+AF --> BILL       : CST
+CDN --> STUDENT   : CDN
+
+' ---------- Legend ----------
+legend right
+== Use Cases ==
+UC-1 Import → OCR/LLM → preview → save
+UC-2 Edit / merge cards
+UC-3 Daily SRS session
+UC-4 Analytics & progress
+UC-5 Profile & settings (incl. Auth)
+
+== Flows ==
+F1  Student ↔ System (main UX)   [UC-1..UC-5]
+F3  System ↔ Auth (OIDC)         [UC-5]
+F4  System ↔ LLM (gen/extract)   [UC-1]
+F5  System ↔ OCR (text)          [UC-1]
+F6  System ↔ Object Storage      [UC-1]
+F7  System ↔ Notification        [UC-1/2/3]
+CST Cost events → Billing        [UC-1]
+MTR Metrics & tracing → OBS      [All]
+CDN Static assets → Student      [UI]
+
+== NFR ==
+• P95 ≤ 800ms (interactive); UC-1 processing ≤ 60s
+• Resume SRS on disconnect; anonymize prompts to externals
+• Monitor latency/error/cost; alerts on degradation
+endlegend
+@enduml
