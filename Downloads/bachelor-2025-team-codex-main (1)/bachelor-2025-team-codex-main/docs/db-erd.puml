@@ -1,0 +1,116 @@
+@startuml
+' Auto-Flashcards — ERD (MVP, refined)
+hide circle
+skinparam linetype ortho
+skinparam shadowing false
+skinparam ArrowThickness 1
+skinparam class {
+  BackgroundColor White
+  BorderColor Black
+}
+
+entity "users" as users {
+  * id: uuid <<PK>>
+  --
+  email: text <<UNIQUE>>
+  password_hash: text
+  display_name: text
+  language: text  ' enum: en, ru, ar, de, fr (doc)
+  theme: text     ' enum: light, dark (doc)
+  level: text     ' enum: beginner, intermediate, advanced (doc)
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+entity "decks" as decks {
+  * id: uuid <<PK>>
+  --
+  user_id: uuid <<FK users.id>>
+  title: text
+  is_final: boolean ' default: false
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+entity "cards" as cards {
+  * id: uuid <<PK>>
+  --
+  deck_id: uuid <<FK decks.id>>
+  question: text
+  answer: text
+  difficulty: int ' CHECK 1..5
+  created_at: timestamptz
+  updated_at: timestamptz
+}
+
+entity "reviews" as reviews {
+  * id: uuid <<PK>>
+  --
+  card_id: uuid <<FK cards.id>>
+  user_id: uuid <<FK users.id>>
+  due_at: timestamptz
+  interval_days: int
+  ease_factor: numeric(4,2)
+  repetitions: int
+  last_grade: text ' enum: again, hard, good, easy (doc)
+  created_at: timestamptz
+  updated_at: timestamptz
+  --
+  UNIQUE(card_id, user_id)
+}
+
+entity "stats_daily" as stats_daily {
+  * id: uuid <<PK>>
+  --
+  user_id: uuid <<FK users.id>>
+  deck_id: uuid <<FK decks.id>> (nullable)
+  day: date
+  reviewed_cnt: int
+  new_cnt: int
+  correct_cnt: int
+  --
+  UNIQUE(user_id, deck_id, day)
+}
+
+entity "files" as files {
+  * id: uuid <<PK>>
+  --
+  user_id: uuid <<FK users.id>>
+  deck_id: uuid <<FK decks.id>> (nullable) ' link source to a deck if exists
+  storage_key: text
+  mime_type: text
+  size_bytes: bigint
+  status: text ' enum: stored | processed | failed (doc)
+  created_at: timestamptz
+}
+
+entity "jobs" as jobs {
+  * id: uuid <<PK>>
+  --
+  user_id: uuid <<FK users.id>> (nullable)
+  deck_id: uuid <<FK decks.id>> (nullable)
+  job_type: text  ' enum: ocr | llm_generate | aggregate | other (doc)
+  status: text    ' enum: queued | running | done | failed (doc)
+  payload: jsonb
+  result: jsonb
+  error: text
+  created_at: timestamptz
+  started_at: timestamptz
+  finished_at: timestamptz
+}
+
+' ---------------- Relationships ----------------
+' ON DELETE CASCADE (doc): users→decks/files/reviews/stats
+users  ||--o{ decks       : has (cascade)
+decks  ||--o{ cards       : has (cascade)
+users  ||--o{ files       : has (cascade)
+users  ||--o{ stats_daily : has (cascade)
+decks  ||--o{ stats_daily : aggregates (cascade)
+cards  ||--o{ reviews     : scheduled (cascade by deck->cards)
+users  ||--o{ reviews     : owns (cascade)
+
+' jobs lifecyle objects (no cascade required, nullable FKs)
+users  ||--o{ jobs        : has
+decks  ||--o{ jobs        : has
+
+@enduml

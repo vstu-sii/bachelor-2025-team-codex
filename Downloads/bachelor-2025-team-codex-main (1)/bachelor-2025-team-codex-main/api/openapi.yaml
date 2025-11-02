@@ -1,0 +1,344 @@
+openapi: 3.0.3
+info:
+  title: Auto-Flashcards API
+  version: 0.1.0
+  license:
+    name: MIT
+servers:
+  - url: http://localhost:8000
+
+# no auth for MVP mock; keeps lint happy without per-operation security.
+security: []
+
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      summary: Health check
+      responses:
+        '200':
+          description: OK
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /decks:
+    post:
+      operationId: createDeck
+      summary: Create deck from rawText or fileRef (UC-1)
+      description: |
+        Creates a new deck draft from raw text or an uploaded file reference.
+        Returns deckId and a preview list of generated cards (staged).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title]
+              properties:
+                title:
+                  type: string
+                  minLength: 1
+                rawText:
+                  type: string
+                  nullable: true
+                fileRef:
+                  type: string
+                  nullable: true
+                  description: Reference/id to a previously uploaded file in object storage
+            examples:
+              fromRaw:
+                summary: Raw text
+                value:
+                  title: "Bio 101 — Photosynthesis"
+                  rawText: "Photosynthesis converts light energy into chemical energy..."
+              fromFile:
+                summary: File ref
+                value:
+                  title: "Lecture 3"
+                  fileRef: "file_7b3a6f3c.pdf"
+      responses:
+        '201':
+          description: Created deck draft with preview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateDeckResponse'
+              examples:
+                previewExample:
+                  value:
+                    deckId: "3c7f2a42-3f1c-4c62-a7b0-6e6b6a2f8b10"
+                    preview:
+                      - id: "temp-1"
+                        question: "What is photosynthesis?"
+                        answer: "The process by which plants convert light into chemical energy."
+                        difficulty: 3
+                      - id: "temp-2"
+                        question: "Where does photosynthesis occur?"
+                        answer: "In the chloroplasts, mainly within the leaves."
+                        difficulty: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /decks/{id}/cards:
+    get:
+      operationId: listDeckCards
+      summary: Get deck cards (preview or final)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Cards for the deck
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Card' }
+              examples:
+                listExample:
+                  value:
+                    - id: "a1e0f7b0-5c20-4a5a-8f2f-1b8b2a2f92a0"
+                      question: "Define photosynthesis"
+                      answer: "Conversion of light energy into chemical energy."
+                      difficulty: 3
+                    - id: "c7b3ad09-45b9-470a-9e2c-6a2f9a1f2b33"
+                      question: "Main pigment?"
+                      answer: "Chlorophyll."
+                      difficulty: 2
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /decks/{id}/finalize:
+    post:
+      operationId: finalizeDeck
+      summary: Finalize a deck after preview edits (UC-1)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Finalized
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: "ok" }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /cards/{id}:
+    patch:
+      operationId: patchCard
+      summary: Edit a card (UC-2)
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CardPatch' }
+            examples:
+              patchExample:
+                value:
+                  question: "Updated: What is photosynthesis?"
+                  difficulty: 4
+      responses:
+        '200': { description: OK }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /cards/merge:
+    post:
+      operationId: mergeCards
+      summary: Merge duplicate cards (UC-2)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardIds]
+              properties:
+                cardIds:
+                  type: array
+                  minItems: 2
+                  items: { type: string, format: uuid }
+      responses:
+        '200': { description: OK }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /srs/session/start:
+    post:
+      operationId: startSrsSession
+      summary: Start an SRS session (UC-3)
+      responses:
+        '200':
+          description: Due cards
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/Card' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+
+  /srs/grade:
+    post:
+      operationId: submitSrsGrade
+      summary: Submit a grade and reschedule (UC-3)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cardId, grade]
+              properties:
+                cardId: { type: string, format: uuid }
+                grade: { type: string, enum: [again, hard, good, easy] }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  nextReviewAt:
+                    type: string
+                    format: date-time
+                    example: '2025-11-02T12:00:00Z'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /stats:
+    get:
+      operationId: getStats
+      summary: Stats & progress (UC-4)
+      parameters:
+        - in: query
+          name: range
+          schema: { type: string, enum: [day, week, month], default: week }
+        - in: query
+          name: deckId
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  reviewed: { type: integer, example: 42 }
+                  correctRate: { type: number, format: float, example: 0.86 }
+                  new: { type: integer, example: 10 }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /profile:
+    get:
+      operationId: getProfile
+      summary: Get profile (UC-5)
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Profile' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+    put:
+      operationId: updateProfile
+      summary: Update profile (UC-5)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Profile' }
+      responses:
+        '200': { description: OK }
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+components:
+  schemas:
+    Card:
+      type: object
+      required: [id, question, answer]
+      properties:
+        id: { type: string }
+        question: { type: string }
+        answer: { type: string }
+        difficulty:
+          type: integer
+          minimum: 1
+          maximum: 5
+          default: 3
+
+    CardPatch:
+      type: object
+      properties:
+        question: { type: string }
+        answer: { type: string }
+        difficulty: { type: integer, minimum: 1, maximum: 5 }
+
+    CreateDeckResponse:
+      type: object
+      required: [deckId]
+      properties:
+        deckId: { type: string, format: uuid }
+        preview:
+          type: array
+          items: { $ref: '#/components/schemas/Card' }
+
+    Profile:
+      type: object
+      properties:
+        displayName: { type: string }
+        language: { type: string, enum: [en, ru, ar, de, fr], default: en }
+        theme: { type: string, enum: [light, dark], default: light }
+        level: { type: string, enum: [beginner, intermediate, advanced], default: beginner }
+
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+
+  responses:
+    BadRequest:
+      description: Bad request
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            invalidInput:
+              value:
+                error: { code: "INVALID_INPUT", message: "title is required" }
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+          examples:
+            notFound:
+              value:
+                error: { code: "NOT_FOUND", message: "Deck not found" }
