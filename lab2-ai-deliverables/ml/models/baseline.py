@@ -1,72 +1,75 @@
+# -*- coding: utf-8 -*-
+
 """
-Baseline generator for Auto‑Flashcards.
-- If OPENAI_API_KEY is configured, uses OpenAI chat models.
-- Otherwise falls back to a simple mock that fabricates Q&A from the text heuristically.
+Baseline (Mock) generator for UC-1.
+No external APIs; fully local and deterministic.
+
+Output conforms to OpenAPI `Card`:
+[
+  {"question": "string", "answer": "string", "difficulty": int}
+]
 """
 
-import os
-import json
 import re
 from typing import List, Dict
 
-try:
-    from openai import OpenAI
-    _HAS_OPENAI = True
-except Exception:
-    _HAS_OPENAI = False
+_KEYWORDS_HARD = {
+    "runtime", "complexity", "derivative", "integral", "theorem",
+    "proof", "convergence", "entropy", "gradient", "optimization",
+    "NP-hard", "amortized", "asymptotic"
+}
+_KEYWORDS_EASY = {
+    "definition", "is", "are", "means", "refers", "simple", "basic"
+}
 
+def _split_sentences(text: str) -> List[str]:
+    # Simple, language-agnostic split; keeps abbreviations roughly intact.
+    parts = re.split(r'(?<=[\.!\?])\s+', text.strip())
+    return [p.strip() for p in parts if p.strip()]
 
-def _mock_generate(text: str, max_cards: int = 15) -> List[Dict[str, str]]:
-    # Split text into sentences and turn them into Q/A heuristically
-    sentences = re.split(r'(?<=[.!?])\s+', text.strip())
-    cards = []
-    for i, s in enumerate(sentences):
-        s_clean = s.strip()
-        if not s_clean:
-            continue
-        q = f"What is the key idea of sentence {i+1}?"
-        a = s_clean
-        cards.append({"question": q, "answer": a})
+def _estimate_difficulty(sentence: str) -> int:
+    s = sentence.lower()
+    score = 3
+    # length heuristic
+    if len(s) < 60:
+        score -= 1
+    if len(s) > 180:
+        score += 1
+    # keyword heuristic
+    if any(k in s for k in _KEYWORDS_HARD):
+        score += 1
+    if any(k in s for k in _KEYWORDS_EASY):
+        score -= 1
+    return min(5, max(1, score))
+
+def generate_flashcards(text: str, lang: str = "en", max_cards: int = 10) -> List[Dict]:
+    """
+    Turn free text into a list of Q/A cards (mock).
+    - `lang`: "en" or "ru" controls question phrasing only.
+    - Deterministic: same input -> same output.
+    """
+    sentences = _split_sentences(text)
+    cards: List[Dict] = []
+
+    for i, sent in enumerate(sentences):
         if len(cards) >= max_cards:
             break
+        # Build a simple exam-style question
+        if lang.lower().startswith("ru"):
+            q = f"В чём основная идея #{i+1}?"
+        else:
+            q = f"What is the main idea #{i+1}?"
+
+        card = {
+            "question": q,
+            "answer": sent,
+            "difficulty": _estimate_difficulty(sent)
+        }
+        cards.append(card)
+
     return cards
 
-
-def generate_flashcards(text: str, language: str = "en", max_cards: int = 15, temperature: float = 0.2) -> List[Dict[str, str]]:
-    api_key = os.getenv("OPENAI_API_KEY")
-    model = os.getenv("FLASHCARDS_MODEL", "gpt-4o-mini")
-    if _HAS_OPENAI and api_key:
-        client = OpenAI(api_key=api_key)
-        system = "You extract study flashcards. Return ONLY valid JSON list of {question, answer}."
-        prompt = f"Extract {max_cards} Q&A flashcards from this {language} text. Answers must be grounded in the text.\n\n{text}"
-        try:
-            resp = client.chat.completions.create(
-                model=model,
-                temperature=temperature,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-            )
-            content = resp.choices[0].message.content
-            # Try to parse JSON; if not parsable, fallback to mock
-            data = json.loads(content)
-            if isinstance(data, list):
-                # keep only needed fields
-                clean = []
-                for item in data:
-                    q = str(item.get("question", "")).strip()
-                    a = str(item.get("answer", "")).strip()
-                    if q and a:
-                        clean.append({"question": q, "answer": a})
-                return clean[:max_cards]
-        except Exception:
-            pass  # fall back to mock
-
-    return _mock_generate(text, max_cards=max_cards)
-
-
 if __name__ == "__main__":
-    sample_text = "Cognitive Load Theory (CLT) explains limits of working memory. Segmenting content helps. Spaced repetition improves retention."
-    cards = generate_flashcards(sample_text, language="en", max_cards=5)
-    print(json.dumps(cards, ensure_ascii=False, indent=2))
+    demo = "Algorithms analyze growth rates. Arrays allow O(1) access. Sorting compares elements."
+    for c in generate_flashcards(demo, lang="en", max_cards=5):
+        print(c)

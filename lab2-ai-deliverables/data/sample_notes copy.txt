@@ -1,0 +1,2 @@
+Intro to Algorithms. Big-O is about growth rate. Arrays allow O(1) access.
+Sorting compares elements.
