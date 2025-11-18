@@ -1,60 +1,47 @@
 @startuml
-' ===== Auto-Flashcards — Plain PlantUML Container Diagram (no external includes) =====
-skinparam componentStyle rectangle
-skinparam shadowing false
-skinparam rectangle {
-  StereotypeFontSize 12
-  FontSize 12
+!include https://raw.githubusercontent.com/plantuml-stdlib/C4-PlantUML/master/C4_Container.puml
+
+LAYOUT_LEFT_RIGHT()
+HIDE_STEREOTYPE()
+
+Person(student, "Student", "Взаимодействует с Auto-Flashcards через веб-интерфейс")
+
+System_Boundary(sys, "Auto-Flashcards") {
+  Container(fe, "Frontend", "Next.js / React", "UI: создать/редактировать колоды и карточки, запускать сессии, смотреть статистику и профиль")
+  Container(api, "API Backend", "FastAPI / REST/OpenAPI", "Бизнес-логика: UC-1..UC-5, обработка запросов от фронтенда")
+  ContainerDb(db, "PostgreSQL", "Database", "Пользователи, колоды, карточки, результаты повторений, статистика, профиль")
+  Container(store, "Object Storage", "S3-compatible", "Исходные файлы (PDF/изображения), нормализованный текст, артефакты")
+  Container(queue, "Job Queue & Workers", "Celery / RQ", "Фоновые задания: OCR, генерация Q/A, агрегация статистики")
+  Container(gw, "LLM Gateway", "Service", "LLM-троттлинг, ретраи, анонимизация, учёт стоимости")
+  Container(ocr, "OCR Adapter", "Service", "Адаптер/нормализация запросов к OCR-провайдеру")
+  Container(mon, "Monitoring & Tracing", "Prometheus / Grafana / Langfuse", "Метрики, логи и трейсы")
 }
 
-title Auto-Flashcards — Container Diagram (Plain PlantUML)
+System_Ext(auth, "Auth / IdP (OIDC/OAuth)", "External System", "Аутентификация пользователя")
+System_Ext(llm, "LLM Provider", "External System", "Генерация вопросов/ответов и понятий")
+System_Ext(ocrsvc, "OCR Provider", "External System", "Извлечение текста из PDF и изображений")
 
-actor "Student" as Student
+' --- Взаимодействия пользователя
+Rel(student, fe, "UI (UC-1..UC-5)", "HTTPS")
 
-cloud "Auth / IdP\n(OIDC/OAuth)" as AUTH
-cloud "LLM Provider" as LLM
-cloud "OCR Provider" as OCRSVC
+' --- Внешние системы
+Rel(fe, auth, "Login / OAuth", "OIDC/OAuth")
+Rel(fe, api, "REST / JSON", "HTTPS")
 
-rectangle "Auto-Flashcards" as SYSTEM {
-  component "Frontend\n(Next.js / React)" as FE
-  component "API Backend\n(FastAPI, REST/OpenAPI)" as API
-  database "PostgreSQL\n(DB)" as DB
-  collections "Object Storage\n(S3-compatible)" as STORE
-  component "Job Queue & Workers\n(Celery/RQ)" as Q
-  component "LLM Gateway\n(Service)" as GW
-  component "OCR Adapter\n(Service)" as OCR
-  node "Monitoring & Tracing\n(Prometheus/Grafana + Langfuse)" as MON
-}
+Rel(api, db, "SQL CRUD: decks/cards/reviews/stats/profile", "SQL")
+Rel(api, store, "Read/Write files (PDF/text)", "S3 API")
+Rel(api, queue, "Enqueue background jobs (OCR/LLM/Aggregations)", "Queue")
+Rel(api, gw, "LLM requests (generate Q/A, summarize)", "HTTPS")
+Rel(api, ocr, "OCR requests (extract text)", "HTTP")
+Rel(api, mon, "Push metrics & traces", "OTel / Prometheus")
 
-' --- External interactions
-Student --> FE : UI (UC-1..UC-5)
-FE --> AUTH : Login / OAuth
-FE --> API : REST / JSON
+Rel(queue, gw, "LLM API (batch Q/A generation)", "HTTPS")
+Rel(queue, ocr, "OCR API (batch OCR jobs)", "HTTP")
+Rel(queue, db, "Update cards & stats", "SQL")
+Rel(queue, store, "Read/Write docs & artifacts", "S3 API")
+Rel(queue, mon, "Worker metrics & traces", "OTel / Prometheus")
 
-' --- Internal interactions
-API --> DB : SQL (CRUD: Decks/Cards/Reviews/Stats/Profile)
-API --> STORE : Read/Write files (PDF/raw text) [UC-1]
-API --> Q : Enqueue background jobs (OCR/LLM/Aggregations)
-API --> GW : LLM requests (generate Q/A, summarize) [UC-1]
-API --> OCR : OCR requests (extract text) [UC-1]
-API --> MON : Push/pull metrics & traces
-
-GW --> LLM : LLM API
-OCR --> OCRSVC : OCR API
-
-' --- UC endpoints cheat sheet
-note right of FE
-UC-1: POST /decks, GET /decks/{id}/cards
-UC-2: PATCH /cards/{id}, POST /cards/merge
-UC-3: POST /srs/session/start, POST /srs/grade
-UC-4: GET /stats?range=...&deck=...
-UC-5: GET/PUT /profile
-end note
-
-' --- NFR notes (as comments)
-' P95 ≤ 800ms for interactive flows
-' Queue long-running tasks (OCR/LLM/Aggregations)
-' TLS + minimize data sent to LLM + RBAC
-' Prometheus/Grafana + Langfuse for observability
+Rel(gw, llm, "LLM API", "HTTPS")
+Rel(ocr, ocrsvc, "OCR API", "HTTPS")
 
 @enduml
