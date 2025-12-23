@@ -1,6 +1,6 @@
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import Navbar from "./_components/Navbar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -19,45 +19,31 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="ru">
+    <html lang="ru" suppressHydrationWarning>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-slate-950 text-slate-50`}
+        className={`${geistSans.variable} ${geistMono.variable} antialiased text-slate-50`}
       >
-        <div className="min-h-screen flex flex-col">
-          {/* Верхняя панель навигации */}
-          <header className="border-b border-slate-800 bg-slate-950/90 backdrop-blur">
-            <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-              <div className="text-sm font-semibold">
-                Auto-Flashcards · <span className="text-slate-400">MVP</span>
-              </div>
+        {/* Background */}
+        <div className="min-h-screen flex flex-col bg-slate-950">
+          <div className="pointer-events-none fixed inset-0 -z-10">
+            <div className="absolute inset-0 bg-[radial-gradient(900px_circle_at_20%_10%,rgba(56,189,248,0.14),transparent_55%),radial-gradient(800px_circle_at_80%_20%,rgba(16,185,129,0.10),transparent_55%),radial-gradient(900px_circle_at_50%_90%,rgba(99,102,241,0.10),transparent_60%)]" />
+            <div className="absolute inset-0 bg-[linear-gradient(to_bottom,rgba(2,6,23,0.85),rgba(2,6,23,1))]" />
+          </div>
 
-              <nav className="flex gap-4 text-xs md:text-sm">
-                <Link href="/" className="hover:text-sky-400">
-                  Главная 
-                </Link>
-                <Link href="/review" className="hover:text-sky-400">
-                  Повторение 
-                </Link>
-                <Link href="/stats" className="hover:text-sky-400">
-                  Статистика 
-                </Link>
-                <Link href="/profile" className="hover:text-sky-400">
-                  Профиль 
-                </Link>
-              </nav>
-            </div>
-          </header>
+          <Navbar />
 
-          {/* Контент конкретной страницы */}
+          {/* Page content */}
           <main className="flex-1">
-            {children}
+            <div className="max-w-6xl mx-auto px-4 py-8">{children}</div>
           </main>
 
-          {/* Небольшой футер для вида */}
-          <footer className="border-t border-slate-800 bg-slate-950/90">
-            <div className="max-w-5xl mx-auto px-4 py-3 text-[10px] md:text-xs text-slate-500 flex justify-between">
-              <span>· Auto-Flashcards</span>
-              <span></span>
+          {/* Footer */}
+          <footer className="border-t border-slate-800/80 bg-slate-950/60 backdrop-blur">
+            <div className="max-w-6xl mx-auto px-4 py-4 text-[10px] md:text-xs text-slate-400 flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
+              <span>Auto-Flashcards — учебный MVP прототип</span>
+              <span className="text-slate-500">
+                Next.js · FastAPI · Supabase · OpenAI
+              </span>
             </div>
           </footer>
         </div>

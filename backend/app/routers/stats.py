@@ -1,20 +1,21 @@
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+from sqlalchemy import or_, text
+from sqlalchemy.orm import Session
 
-# Импортируем "базу" и модели из decks.py
-from .decks import DECKS_DB, Deck, Card
+from backend.db import get_db, Deck, Card, CardSRS
+from backend.app.auth import get_current_user_id  # <-- عدّل المسار إذا ملفك بمكان مختلف
 
 router = APIRouter()
 
 
 class StatsOverview(BaseModel):
     """
-    Сводная статистика по обучению (UC-4).
+    Сводная статистика по обучению (UC-4) — per user.
     """
     total_decks: int
     total_cards: int
@@ -23,30 +24,66 @@ class StatsOverview(BaseModel):
     reviewed_cards: int
 
 
-def _calculate_stats() -> StatsOverview:
+@router.get("/overview", response_model=StatsOverview)
+def get_stats_overview(
+    db: Session = Depends(get_db),
+    user_id: str = Depends(get_current_user_id),  # <-- حماية + نجيب uid الحالي
+) -> StatsOverview:
     today = date.today()
 
-    total_decks = len(DECKS_DB)
-    total_cards = 0
-    due_today = 0
-    learned_cards = 0
-    reviewed_cards = 0
+    # 1) Totals (ONLY user decks)
+    total_decks = db.query(Deck).filter(Deck.owner_uid == user_id).count()
 
-    for deck in DECKS_DB.values():  # type: Deck
-        for card in deck.cards:  # type: Card
-            total_cards += 1
+    total_cards = (
+        db.query(Card)
+        .join(Deck, Deck.id == Card.deck_id)
+        .filter(Deck.owner_uid == user_id)
+        .count()
+    )
 
-            # Карты, которые нужно повторить сегодня
-            if card.srs.next_review <= today:
-                due_today += 1
+    # 2) Due today (ONLY cards in user decks)
+    due_today = (
+        db.query(Card)
+        .join(Deck, Deck.id == Card.deck_id)
+        .outerjoin(CardSRS, CardSRS.card_id == Card.id)
+        .filter(Deck.owner_uid == user_id)
+        .filter(
+            or_(
+                CardSRS.id.is_(None),
+                CardSRS.next_review.is_(None),
+                CardSRS.next_review <= today,
+            )
+        )
+        .count()
+    )
 
-            # Считаем "выученными" карты с 3 и более успешными повторениями
-            if card.srs.repetitions >= 3:
-                learned_cards += 1
+    # 3) Learned (ONLY user cards)
+    learned_cards = (
+        db.query(CardSRS)
+        .join(Card, Card.id == CardSRS.card_id)
+        .join(Deck, Deck.id == Card.deck_id)
+        .filter(Deck.owner_uid == user_id)
+        .filter(CardSRS.repetitions >= 3)
+        .count()
+    )
 
-            # Карты, по которым уже была хотя бы одна оценка
-            if card.srs.last_grade is not None:
-                reviewed_cards += 1
+    # 4) Reviewed cards (ONLY user cards)
+    # نعتمد SQL لأن review_answers غالبًا جدول بدون ORM model عندك
+    reviewed_cards = int(
+        db.execute(
+            text(
+                """
+                SELECT COUNT(DISTINCT ra.card_id)
+                FROM review_answers ra
+                JOIN cards c ON c.id = ra.card_id
+                JOIN decks d ON d.id = c.deck_id
+                WHERE d.owner_uid = :uid
+                """
+            ),
+            {"uid": user_id},
+        ).scalar()
+        or 0
+    )
 
     return StatsOverview(
         total_decks=total_decks,
@@ -55,18 +92,3 @@ def _calculate_stats() -> StatsOverview:
         learned_cards=learned_cards,
         reviewed_cards=reviewed_cards,
     )
-
-
-@router.get("/overview", response_model=StatsOverview)
-def get_stats_overview() -> StatsOverview:
-    """
-    Эндпоинт UC-4: сводная статистика по колодам и карточкам.
-
-    На основе текущего состояния in-memory "БД" (DECKS_DB) возвращает:
-    - total_decks     — количество колод;
-    - total_cards     — общее количество карточек;
-    - due_today       — сколько карточек нужно повторить сегодня;
-    - learned_cards   — сколько карточек считаются выученными;
-    - reviewed_cards  — по скольким карточкам уже были ответы.
-    """
-    return _calculate_stats()

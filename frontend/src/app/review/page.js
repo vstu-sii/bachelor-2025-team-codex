@@ -1,271 +1,323 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { supabase } from "../lib/supabaseClient";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
-
-/**
- * Страница UC-3: ежедневное повторение по SRS.
- * Здесь фронтенд реально работает с бекенд-эндпоинтами:
- *   - GET  /decks/
- *   - GET  /review/next?deck_id=...
- *   - POST /review/answer
- */
 export default function ReviewPage() {
+  const router = useRouter();
+
   const [decks, setDecks] = useState([]);
   const [selectedDeckId, setSelectedDeckId] = useState(null);
+  const [loadingDecks, setLoadingDecks] = useState(true);
 
   const [currentCard, setCurrentCard] = useState(null);
+  const [loadingCard, setLoadingCard] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  const [error, setError] = useState("");
+  const [infoMessage, setInfoMessage] = useState("");
   const [showAnswer, setShowAnswer] = useState(false);
 
-  const [loadingDecks, setLoadingDecks] = useState(false);
-  const [loadingCard, setLoadingCard] = useState(false);
-  const [answering, setAnswering] = useState(false);
+  // ✅ helper: fetch to backend with Authorization Bearer token
+  const apiFetch = useCallback(
+    async (path, options = {}) => {
+      const { data: sessionData, error: sessionErr } =
+        await supabase.auth.getSession();
+      if (sessionErr) throw new Error(sessionErr.message);
 
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+      const token = sessionData?.session?.access_token;
+      if (!token) {
+        router.push("/login");
+        throw new Error("No active session token");
+      }
 
-  // --- Загрузка списка колод при первом рендере ---
+      const headers = new Headers(options.headers || {});
+      headers.set("Authorization", `Bearer ${token}`);
+
+      if (!headers.has("Content-Type") && options.body) {
+        headers.set("Content-Type", "application/json");
+      }
+
+      const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
+
+      if (res.status === 401) {
+        router.push("/login");
+        throw new Error("Unauthorized (token missing/expired)");
+      }
+
+      return res;
+    },
+    [router]
+  );
+
+  // 1) Load decks
   useEffect(() => {
-    const fetchDecks = async () => {
+    const loadDecks = async () => {
       setLoadingDecks(true);
       setError("");
+
       try {
-        const res = await fetch(`${API_BASE}/decks/`);
+        const res = await apiFetch("/decks/", { method: "GET" });
         if (!res.ok) {
-          throw new Error(`Ошибка загрузки колод: ${res.status}`);
+          const t = await res.text();
+          throw new Error(`Failed to load decks: ${res.status} – ${t}`);
         }
-        const data = await res.json();
-        setDecks(data);
-        if (data.length > 0) {
-          setSelectedDeckId(data[0].id);
-        }
+
+        const list = (await res.json()) || [];
+        setDecks(list);
+
+        if (list.length > 0) setSelectedDeckId(list[0].id);
+        else setSelectedDeckId(null);
       } catch (err) {
-        console.error(err);
-        setError("Не удалось загрузить список колод. Проверьте backend.");
+        setError(err?.message || "Error while loading decks.");
       } finally {
         setLoadingDecks(false);
       }
     };
 
-    fetchDecks();
-  }, []);
+    void loadDecks();
+  }, [apiFetch]);
 
-  // --- Загрузить следующую карточку для выбранной колоды ---
-  const loadNextCard = async () => {
+  // 2) Load next card
+  const loadNextCard = useCallback(async () => {
     if (!selectedDeckId) {
-      setError("Сначала выберите колоду.");
+      setError("Please select a deck first.");
       return;
     }
+
     setLoadingCard(true);
     setError("");
-    setMessage("");
+    setInfoMessage("");
     setShowAnswer(false);
-    setCurrentCard(null);
 
     try {
-      const url = `${API_BASE}/review/next?deck_id=${selectedDeckId}`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        throw new Error(`Ошибка загрузки карточки: ${res.status}`);
-      }
-      const data = await res.json();
-
-      if (!data.card) {
-        setMessage("На сегодня в этой колоде нет карточек к повторению. 🎉");
-        setCurrentCard(null);
-      } else {
-        setCurrentCard(data.card);
-      }
-    } catch (err) {
-      console.error(err);
-      setError("Не удалось получить следующую карточку. Проверьте backend.");
-    } finally {
-      setLoadingCard(false);
-    }
-  };
-
-  // --- Отправка оценки по карточке ---
-  const handleGrade = async (grade) => {
-    if (!currentCard || !selectedDeckId) return;
-
-    setAnswering(true);
-    setError("");
-    setMessage("");
-
-    try {
-      const res = await fetch(`${API_BASE}/review/answer`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          deck_id: selectedDeckId,
-          card_id: currentCard.card_id,
-          grade,
-        }),
+      const res = await apiFetch(`/review/next?deck_id=${selectedDeckId}`, {
+        method: "GET",
       });
 
       if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`Ошибка отправки оценки: ${res.status} ${text}`);
+        const text = await res.text().catch(() => "");
+        throw new Error(`Error loading next card: ${res.status} – ${text}`);
       }
 
-      const data = await res.json();
-      // data.next_review — дата следующего повторения (можно отобразить пользователю)
-      console.log("Next review date:", data.next_review);
+      const json = await res.json();
 
-      // Сразу загружаем следующую карточку
-      await loadNextCard();
+      if (!json.card) {
+        setCurrentCard(null);
+        setInfoMessage("No due cards today for this deck 🎉");
+      } else {
+        setCurrentCard(json.card);
+      }
     } catch (err) {
-      console.error(err);
-      setError("Не удалось отправить оценку. Проверьте backend.");
+      setError(err?.message || "Error while loading next card.");
     } finally {
-      setAnswering(false);
-      setShowAnswer(false);
+      setLoadingCard(false);
     }
-  };
+  }, [apiFetch, selectedDeckId]);
+
+  useEffect(() => {
+    if (selectedDeckId) {
+      setCurrentCard(null);
+      setInfoMessage("");
+      setError("");
+      void loadNextCard();
+    }
+  }, [selectedDeckId, loadNextCard]);
+
+  // 3) Submit answer
+  const handleAnswer = useCallback(
+    async (grade) => {
+      if (!currentCard || !selectedDeckId) return;
+
+      setSubmitting(true);
+      setError("");
+      setInfoMessage("");
+
+      try {
+        const res = await apiFetch("/review/answer", {
+          method: "POST",
+          body: JSON.stringify({
+            deck_id: selectedDeckId,
+            card_id: currentCard.id,
+            grade,
+          }),
+        });
+
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          throw new Error(`Error submitting answer: ${res.status} – ${text}`);
+        }
+
+        const data = await res.json();
+
+        if (!data.next_card) {
+          setCurrentCard(null);
+          setInfoMessage("Session finished for this deck 🎉");
+          setShowAnswer(false);
+        } else {
+          setCurrentCard(data.next_card);
+          setShowAnswer(false);
+        }
+      } catch (err) {
+        setError(err?.message || "Error while submitting answer.");
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [apiFetch, currentCard, selectedDeckId]
+  );
 
   return (
-    <div className="flex justify-center px-4 py-10">
-      <div className="w-full max-w-3xl space-y-6">
-        {/* Заголовок */}
-        <header className="space-y-2">
-          <h1 className="text-2xl font-bold">Ежедневное повторение </h1>
-          <p className="text-sm text-slate-300">
-            Здесь пользователь видит карточки, которые нужно повторить сегодня,
-            и оценивает, насколько хорошо он помнит ответ. Бекенд использует
-            простую SRS-логику, чтобы планировать дату следующего повторения.
-          </p>
+    <main className="min-h-screen bg-slate-950 text-slate-50 flex justify-center px-4 py-10">
+      <div className="w-full max-w-4xl space-y-8">
+        <header className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold">
+              Review mode <span className="text-slate-400 text-base">(UC-3)</span>
+            </h1>
+            <p className="text-sm text-slate-300 mt-1">
+              Select a deck and practice with spaced repetition (SM-2).
+            </p>
+          </div>
+
+          <a
+            href="/profile"
+            className="mt-3 md:mt-0 inline-flex items-center justify-center rounded-full border border-slate-700 px-4 py-1.5 text-xs md:text-sm hover:bg-slate-800 transition-colors"
+          >
+            ← Back to profile
+          </a>
         </header>
 
-        {/* Выбор колоды */}
-        <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="flex-1 space-y-1">
-              <div className="text-xs text-slate-400">Выбор колоды</div>
-              {loadingDecks ? (
-                <div className="text-xs text-slate-400">
-                  Загрузка списка колод...
-                </div>
-              ) : decks.length === 0 ? (
-                <div className="text-xs text-amber-400">
-                  Колоды ещё не созданы. Сначала создайте колоду и карточки на
-                  главной странице или через Swagger (эндпоинты{" "}
-                  <code>/decks/</code> и{" "}
-                  <code>/decks/&lbrace;deck_id&rbrace;/cards</code>).
-                </div>
-              ) : (
-                <select
-                  className="w-full md:w-64 rounded-lg bg-slate-950 border border-slate-700 px-3 py-2 text-sm outline-none focus:border-sky-500"
-                  value={selectedDeckId ?? ""}
-                  onChange={(e) =>
-                    setSelectedDeckId(
-                      e.target.value ? Number(e.target.value) : null
-                    )
-                  }
-                >
-                  {decks.map((deck) => (
-                    <option key={deck.id} value={deck.id}>
-                      {deck.title} (ID: {deck.id})
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold">1. Choose a deck</h2>
             <button
               type="button"
               onClick={loadNextCard}
-              disabled={!selectedDeckId || loadingCard || loadingDecks}
-              className="inline-flex items-center justify-center rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 disabled:text-slate-400 px-4 py-2 text-sm font-semibold transition-colors"
+              disabled={!selectedDeckId || loadingCard}
+              className="text-xs md:text-sm inline-flex items-center rounded-lg bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 px-3 py-1.5 font-medium transition-colors"
             >
-              {loadingCard ? "Загрузка..." : "Начать повторение"}
+              {loadingCard ? "Loading card..." : "Load next card"}
             </button>
           </div>
 
-          {/* Сообщения об ошибках / инфо */}
-          {error && (
-            <div className="mt-2 rounded-lg border border-red-700 bg-red-950/40 px-3 py-2 text-xs text-red-200">
-              {error}
-            </div>
-          )}
-          {message && (
-            <div className="mt-2 rounded-lg border border-emerald-700 bg-emerald-950/40 px-3 py-2 text-xs text-emerald-200">
-              {message}
+          {loadingDecks ? (
+            <p className="text-sm text-slate-400">Loading decks...</p>
+          ) : decks.length === 0 ? (
+            <p className="text-sm text-slate-400">
+              No decks found. Go to <span className="font-semibold text-sky-400">Profile</span> and create a deck first.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-3">
+              <label className="text-xs text-slate-400">Available decks:</label>
+              <select
+                value={selectedDeckId || ""}
+                onChange={(e) => {
+                  const nextId = e.target.value ? Number(e.target.value) : null;
+                  setSelectedDeckId(nextId);
+                  setShowAnswer(false);
+                }}
+                className="min-w-[220px] rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:border-sky-500"
+              >
+                {decks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.title} (id={deck.id})
+                  </option>
+                ))}
+              </select>
             </div>
           )}
         </section>
 
-        {/* Карточка для повторения */}
-        {currentCard && (
-          <section className="space-y-4 rounded-2xl border border-slate-800 bg-slate-900/60 p-5">
-            <div className="text-xs text-slate-400 mb-1">
-              Карточка к повторению · deck #{currentCard.deck_id} · card #
-              {currentCard.card_id}
-            </div>
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/60 p-5 space-y-4">
+          <h2 className="text-lg font-semibold">2. Current card</h2>
 
-            <div className="space-y-3">
-              <div className="text-sm font-semibold text-slate-200">Вопрос:</div>
-              <div className="rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm whitespace-pre-wrap">
-                {currentCard.question}
+          {error && (
+            <div className="rounded-lg border border-red-700 bg-red-950/60 px-3 py-2 text-sm text-red-200">
+              {error}
+            </div>
+          )}
+
+          {infoMessage && (
+            <div className="rounded-lg border border-emerald-700 bg-emerald-950/60 px-3 py-2 text-sm text-emerald-200">
+              {infoMessage}
+            </div>
+          )}
+
+          {!currentCard ? (
+            <p className="text-sm text-slate-400">
+              No active card. {selectedDeckId ? "Loading…" : "Select a deck first."}
+            </p>
+          ) : (
+            <div className="space-y-4 rounded-xl border border-slate-700 bg-slate-950 px-4 py-4">
+              <div className="flex items-center justify-between text-[11px] text-slate-400">
+                <span>Deck ID: {selectedDeckId}</span>
+                <span>Card ID: {currentCard.id}</span>
               </div>
 
-              <button
-                type="button"
-                onClick={() => setShowAnswer((prev) => !prev)}
-                className="rounded-lg bg-sky-600 hover:bg-sky-500 py-2 px-4 text-sm font-semibold transition-colors"
-              >
-                {showAnswer ? "Скрыть ответ" : "Показать ответ"}
-              </button>
+              <div>
+                <div className="text-xs font-semibold text-slate-400 mb-1">Question</div>
+                <div className="text-base font-medium">{currentCard.question}</div>
+              </div>
 
-              {showAnswer && (
-                <div className="space-y-3">
-                  <div className="text-sm font-semibold text-slate-200">
-                    Ответ:
-                  </div>
-                  <div className="rounded-lg border border-emerald-600 bg-emerald-950/40 px-3 py-2 text-sm whitespace-pre-wrap">
+              <div>
+                <button
+                  type="button"
+                  onClick={() => setShowAnswer((prev) => !prev)}
+                  className="text-sm font-medium text-sky-400 hover:text-sky-300 transition-colors"
+                >
+                  {showAnswer ? "Hide answer" : "Show answer"}
+                </button>
+
+                {showAnswer && (
+                  <div className="mt-2 rounded-lg bg-slate-900/80 border border-slate-700 px-3 py-2 text-sm">
                     {currentCard.answer}
                   </div>
+                )}
+              </div>
 
-                  <div className="pt-2 text-xs text-slate-400">
-                    Оцените, насколько хорошо вы помните эту карточку:
-                  </div>
-
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      type="button"
-                      onClick={() => handleGrade(0)}
-                      disabled={answering}
-                      className="rounded-lg bg-red-700 hover:bg-red-600 disabled:bg-slate-700 disabled:text-slate-400 px-3 py-2 text-xs font-semibold transition-colors"
-                    >
-                      Сложно (0)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleGrade(1)}
-                      disabled={answering}
-                      className="rounded-lg bg-amber-600 hover:bg-amber-500 disabled:bg-slate-700 disabled:text-slate-400 px-3 py-2 text-xs font-semibold transition-colors"
-                    >
-                      Нормально (1)
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleGrade(2)}
-                      disabled={answering}
-                      className="rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 disabled:text-slate-400 px-3 py-2 text-xs font-semibold transition-colors"
-                    >
-                      Легко (2)
-                    </button>
-                  </div>
-                </div>
-              )}
+              <div className="pt-3 border-t border-slate-800 flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleAnswer(0)}
+                  className="inline-flex items-center justify-center rounded-full bg-red-600 hover:bg-red-500 disabled:bg-slate-700 px-4 py-1.5 text-xs md:text-sm font-semibold transition-colors"
+                >
+                  Again (0)
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleAnswer(3)}
+                  className="inline-flex items-center justify-center rounded-full bg-amber-500 hover:bg-amber-400 disabled:bg-slate-700 px-4 py-1.5 text-xs md:text-sm font-semibold transition-colors"
+                >
+                  Hard (3)
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleAnswer(4)}
+                  className="inline-flex items-center justify-center rounded-full bg-sky-600 hover:bg-sky-500 disabled:bg-slate-700 px-4 py-1.5 text-xs md:text-sm font-semibold transition-colors"
+                >
+                  Good (4)
+                </button>
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => handleAnswer(5)}
+                  className="inline-flex items-center justify-center rounded-full bg-emerald-600 hover:bg-emerald-500 disabled:bg-slate-700 px-4 py-1.5 text-xs md:text-sm font-semibold transition-colors"
+                >
+                  Easy (5)
+                </button>
+              </div>
             </div>
-          </section>
-        )}
+          )}
+        </section>
       </div>
-    </div>
+    </main>
   );
 }

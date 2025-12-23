@@ -1,4 +1,3 @@
-# backend/app/exceptions/handlers.py
 """
 Единое место для настройки обработчиков ошибок FastAPI.
 
@@ -9,8 +8,8 @@
 """
 
 from typing import Optional, Any, Dict
-
 import logging
+
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
@@ -109,8 +108,10 @@ async def generic_exception_handler(
     "Последняя линия защиты" — перехватывает любые необработанные исключения.
     Пользователь видит аккуратный 500-ответ, а детали ошибки уходят в лог.
     """
+    # ✅ FIX: match placeholders with provided args
+    # logging uses %-formatting internally; mismatch causes TypeError.  :contentReference[oaicite:2]{index=2}
     logger.exception(
-        "Unexpected error while handling request %s %s",
+        "Unexpected error while handling request %s %s: %r",
         request.method,
         request.url,
         exc,

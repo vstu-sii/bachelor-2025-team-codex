@@ -1,1 +1,17 @@
 .env
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Node / Next.js
+node_modules/
+.next/
+out/
+
+# Env
+.env
+.env.*
+
+# Logs
+*.log

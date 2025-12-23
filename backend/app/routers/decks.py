@@ -1,33 +1,25 @@
+# backend/app/routers/decks.py
 from __future__ import annotations
 
 from datetime import date
-from typing import Dict, List, Optional
+from typing import List, Optional, Dict, Any
 
-from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy.orm import Session, selectinload
+
+from backend.app.auth import get_current_user
+from backend.db import get_db, Deck as DeckORM, Card as CardORM, User as UserORM
 
 router = APIRouter()
 
 
-# ---------- МОДЕЛИ SRS / КАРТОЧЕК / КОЛОД ----------
-
-
 class CardSRS(BaseModel):
-    """
-    Простейшая модель для SRS-параметров карточки.
-
-    Основано на идеях алгоритма SM-2:
-    - ease_factor (EF) начинается с 2.5;
-    - interval - количество дней до следующего повторения;
-    - repetitions - сколько раз подряд карта была успешно воспроизведена;
-    - next_review - дата, когда карту нужно показать снова.
-    См. описание SM-2 / SuperMemo.  :contentReference[oaicite:1]{index=1}
-    """
-
+    model_config = ConfigDict(from_attributes=True)
     interval: int = 0
     repetitions: int = 0
     ease_factor: float = 2.5
-    next_review: date = Field(default_factory=date.today)
+    next_review: Optional[date] = None
     last_grade: Optional[int] = None
 
 
@@ -37,8 +29,9 @@ class CardCreate(BaseModel):
 
 
 class Card(CardCreate):
+    model_config = ConfigDict(from_attributes=True)
     id: int
-    srs: CardSRS = Field(default_factory=CardSRS)
+    srs: Optional[CardSRS] = None
 
 
 class DeckCreate(BaseModel):
@@ -47,139 +40,170 @@ class DeckCreate(BaseModel):
 
 
 class Deck(DeckCreate):
+    model_config = ConfigDict(from_attributes=True)
     id: int
     cards: List[Card] = Field(default_factory=list)
 
 
-# ---------- ПРОСТЕЙШАЯ IN-MEMORY "БАЗА ДАННЫХ" ----------
+def _ensure_public_user(db: Session, email: str, full_name: Optional[str] = None) -> UserORM:
+    user = db.query(UserORM).filter(UserORM.email == email).first()
+    if not user:
+        user = UserORM(email=email, full_name=full_name)
+        db.add(user)
+        db.flush()  # يعطي user.id بدون commit كامل
+    else:
+        if full_name and not user.full_name:
+            user.full_name = full_name
+            db.flush()
+    return user
 
-# В рамках учебного прототипа мы храним данные просто в памяти процесса,
-# как рекомендуют делать в быстрых примерах с FastAPI. :contentReference[oaicite:2]{index=2}
 
-DECKS_DB: Dict[int, Deck] = {}
-NEXT_DECK_ID: int = 1
-NEXT_CARD_ID: int = 1
-
-
-def _get_deck_or_404(deck_id: int) -> Deck:
-    deck = DECKS_DB.get(deck_id)
-    if deck is None:
+def _get_deck_or_404(db: Session, deck_id: int, owner_uid: str) -> DeckORM:
+    deck = (
+        db.query(DeckORM)
+        .options(selectinload(DeckORM.cards).selectinload(CardORM.srs))
+        .filter(DeckORM.id == deck_id, DeckORM.owner_uid == owner_uid)
+        .first()
+    )
+    if not deck:
         raise HTTPException(status_code=404, detail="Deck not found")
     return deck
 
 
-def _get_card_or_404(deck: Deck, card_id: int) -> Card:
-    for card in deck.cards:
-        if card.id == card_id:
-            return card
-    raise HTTPException(status_code=404, detail="Card not found")
-
-
-# ---------- ЭНДПОИНТЫ ДЛЯ КОЛОД (как раньше, но с полем cards) ----------
+def _get_card_or_404(db: Session, deck_id: int, card_id: int, owner_uid: str) -> CardORM:
+    _ = _get_deck_or_404(db, deck_id, owner_uid)
+    card = (
+        db.query(CardORM)
+        .options(selectinload(CardORM.srs))
+        .filter(CardORM.id == card_id, CardORM.deck_id == deck_id)
+        .first()
+    )
+    if not card:
+        raise HTTPException(status_code=404, detail="Card not found")
+    return card
 
 
 @router.get("/", response_model=List[Deck])
-def list_decks() -> List[Deck]:
-    """
-    Получить список всех колод.
-    """
-    return list(DECKS_DB.values())
+async def list_decks(
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> List[Deck]:
+    user_id = user["id"]
+    decks = (
+        db.query(DeckORM)
+        .options(selectinload(DeckORM.cards).selectinload(CardORM.srs))
+        .filter(DeckORM.owner_uid == user_id)
+        .order_by(DeckORM.id.desc())
+        .all()
+    )
+    return decks
 
 
 @router.post("/", response_model=Deck, status_code=201)
-def create_deck(payload: DeckCreate) -> Deck:
-    """
-    Создать новую колоду.
+async def create_deck(
+    payload: DeckCreate,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Deck:
+    user_id = user["id"]
+    email = user.get("email") or ""
+    full_name = user.get("user_metadata", {}).get("full_name") if isinstance(user.get("user_metadata"), dict) else None
 
-    Используется фронтендом на главной странице (UC-1 / UC-2).
-    """
-    global NEXT_DECK_ID
+    if not email:
+        raise HTTPException(status_code=400, detail="Supabase user has no email")
 
-    deck = Deck(
-        id=NEXT_DECK_ID,
+    public_user = _ensure_public_user(db, email=email, full_name=full_name)
+
+    deck = DeckORM(
         title=payload.title,
         description=payload.description,
-        cards=[],
+        owner_id=public_user.id,   # ✅ مهم لتوافق DB constraint
+        owner_uid=user_id,         # ✅ UUID من Supabase
     )
-    DECKS_DB[NEXT_DECK_ID] = deck
-    NEXT_DECK_ID += 1
+
+    db.add(deck)
+    db.commit()
+    db.refresh(deck)
     return deck
 
 
 @router.get("/{deck_id}", response_model=Deck)
-def get_deck(deck_id: int) -> Deck:
-    """
-    Получить одну колоду по ID.
-    """
-    return _get_deck_or_404(deck_id)
+async def get_deck(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Deck:
+    return _get_deck_or_404(db, deck_id, user["id"])
 
 
 @router.delete("/{deck_id}", status_code=204)
-def delete_deck(deck_id: int) -> None:
-    """
-    Удалить колоду по ID.
-    """
-    if deck_id not in DECKS_DB:
-        raise HTTPException(status_code=404, detail="Deck not found")
-    del DECKS_DB[deck_id]
+async def delete_deck(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> None:
+    deck = _get_deck_or_404(db, deck_id, user["id"])
+    db.delete(deck)
+    db.commit()
     return None
 
 
-# ---------- ЭНДПОИНТЫ ДЛЯ КАРТОЧЕК ВНУТРИ КОЛОДЫ (UC-2) ----------
-
-
 @router.get("/{deck_id}/cards", response_model=List[Card])
-def list_cards(deck_id: int) -> List[Card]:
-    """
-    Получить все карточки в указанной колоде.
-    """
-    deck = _get_deck_or_404(deck_id)
-    return deck.cards
+async def list_cards(
+    deck_id: int,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> List[Card]:
+    deck = _get_deck_or_404(db, deck_id, user["id"])
+    cards = (
+        db.query(CardORM)
+        .options(selectinload(CardORM.srs))
+        .filter(CardORM.deck_id == deck.id)
+        .order_by(CardORM.id.asc())
+        .all()
+    )
+    return cards
 
 
 @router.post("/{deck_id}/cards", response_model=Card, status_code=201)
-def create_card(deck_id: int, payload: CardCreate) -> Card:
-    """
-    Добавить новую карточку в колоду.
-
-    На следующих шагах этот эндпоинт будем использовать на странице
-    /decks/[id] и /review.
-    """
-    global NEXT_CARD_ID
-
-    deck = _get_deck_or_404(deck_id)
-
-    card = Card(
-        id=NEXT_CARD_ID,
-        question=payload.question,
-        answer=payload.answer,
-        srs=CardSRS(),  # базовые SRS-параметры
-    )
-    deck.cards.append(card)
-    NEXT_CARD_ID += 1
+async def create_card(
+    deck_id: int,
+    payload: CardCreate,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Card:
+    deck = _get_deck_or_404(db, deck_id, user["id"])
+    card = CardORM(deck_id=deck.id, question=payload.question, answer=payload.answer)
+    db.add(card)
+    db.commit()
+    db.refresh(card)
     return card
 
 
 @router.put("/{deck_id}/cards/{card_id}", response_model=Card)
-def update_card(deck_id: int, card_id: int, payload: CardCreate) -> Card:
-    """
-    Обновить текст вопроса / ответа карточки.
-    """
-    deck = _get_deck_or_404(deck_id)
-    card = _get_card_or_404(deck, card_id)
-
+async def update_card(
+    deck_id: int,
+    card_id: int,
+    payload: CardCreate,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> Card:
+    card = _get_card_or_404(db, deck_id, card_id, user["id"])
     card.question = payload.question
     card.answer = payload.answer
+    db.commit()
+    db.refresh(card)
     return card
 
 
 @router.delete("/{deck_id}/cards/{card_id}", status_code=204)
-def delete_card(deck_id: int, card_id: int) -> None:
-    """
-    Удалить карточку из колоды.
-    """
-    deck = _get_deck_or_404(deck_id)
-    card = _get_card_or_404(deck, card_id)
-
-    deck.cards = [c for c in deck.cards if c.id != card.id]
+async def delete_card(
+    deck_id: int,
+    card_id: int,
+    db: Session = Depends(get_db),
+    user: Dict[str, Any] = Depends(get_current_user),
+) -> None:
+    card = _get_card_or_404(db, deck_id, card_id, user["id"])
+    db.delete(card)
+    db.commit()
     return None
