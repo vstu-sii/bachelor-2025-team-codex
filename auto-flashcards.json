@@ -1,0 +1,129 @@
+{
+  "id": "auto-flashcards",
+  "slug": "auto-flashcards",
+  "title": "Auto-Flashcards",
+  "shortDescription": "Превратите заметки и файлы в готовые к повторению карточки с помощью ИИ и интервального повторения.",
+  "fullDescription": "Auto-Flashcards - учебный помощник, который превращает заметки или загруженные файлы в карточки вопрос/ответ. Он сочетает генерацию ИИ со структурированным выводом и локальным резервным режимом, управление колодами и интервальное повторение SM-2, чтобы помогать закреплять материал. Приложение включает сессии повторения, статистику прогресса и аутентификацию через Supabase.",
+  "emoji": "cards",
+  "color": "bg-emerald-500",
+  "product": {
+    "problem": "Создание карточек вручную занимает много времени, и многие студенты не придерживаются регулярного графика повторений, что снижает запоминание.",
+    "targetAudience": [
+      "Студенты университетов, которые хотят быстро превращать лекционные заметки в карточки.",
+      "Самообучающиеся, готовящиеся к экзаменам или сертификациям.",
+      "Преподаватели или тьюторы, которым нужно создавать колоды для своих курсов."
+    ],
+    "valueProposition": "Auto-Flashcards сокращает время на создание карточек и помогает учиться по проверенному алгоритму SM-2 в одном приложении.",
+    "useCases": [
+      "Вставьте лекционные заметки и автоматически создайте колоду карточек.",
+      "Загрузите PDF или DOCX и создайте карточки из извлеченного текста.",
+      "Проводите ежедневные сессии повторения с оценкой по SM-2.",
+      "Отслеживайте прогресс: карточки к повторению, выученные и уже повторенные."
+    ]
+  },
+  "category": "education",
+  "difficulty": "medium",
+  "tags": [
+    "flashcards",
+    "spaced repetition",
+    "study",
+    "edtech",
+    "AI",
+    "OpenAI",
+    "Next.js",
+    "FastAPI",
+    "Supabase"
+  ],
+  "team": [
+    {
+      "name": "Аль-Бадви М.Б.",
+      "role": "sa-po",
+      "github": "https://github.com/ALBADWIMAJID"
+    },
+    {
+      "name": "Камель Нардин",
+      "role": "fullstack",
+      "github": "https://github.com/nardeen0"
+    },
+    {
+      "name": "Аларадж заин",
+      "role": "mlops",
+      "github": "https://github.com/zain1010241-netizen"
+    },
+    {
+      "name": "Альшайбави Хуссейн",
+      "role": "mlops",
+      "github": "https://github.com/Hussein-606707"
+    },
+    {
+      "name": "Тахан Лайт",
+      "role": "ai-engineer",
+      "github": "https://github.com/laithtahan812"
+    }
+  ],
+  "groupNumber": "ИВТ-463",
+  "links": {
+    "github": "https://github.com/vstu-sii/bachelor-2025-team-codex",
+    "documentation": "TBD",
+    "prd": "https://github.com/vstu-sii/bachelor-2025-team-codex/tree/d1-prd",
+    "useCases": "https://github.com/vstu-sii/bachelor-2025-team-codex/tree/d2-usecases",
+    "c4Diagrams": "TBD",
+    "apiSpec": "TBD",
+    "adr": "TBD",
+    "roadmap": "https://github.com/vstu-sii/bachelor-2025-team-codex/tree/d1-prd"
+  },
+  "media": {
+    "cover": "",
+    "screenshots": []
+  },
+  "techStack": {
+    "frontend": ["Next.js", "React", "Tailwind CSS", "next-intl"],
+    "backend": ["FastAPI", "Python", "SQLAlchemy"],
+    "ai": ["OpenAI", "Pydantic structured outputs"],
+    "infrastructure": ["Docker", "Docker Compose"],
+    "databases": ["PostgreSQL (Supabase)"],
+    "other": ["Supabase Auth", "Langfuse"]
+  },
+  "achievements": [],
+  "metrics": {
+    "scores": {
+      "functionality": null,
+      "codeQuality": null,
+      "documentation": null,
+      "presentation": null,
+      "innovation": null
+    },
+    "totalScore": 23,
+    "techMetrics": {
+      "testCoverage": 75,
+      "uptime": 99.0,
+      "responseTime": 3000,
+      "requestsPerDay": 800
+    }
+  },
+  "highlights": [
+    "Генерация карточек ИИ со структурированным выводом, повторными попытками и локальным резервным режимом.",
+    "Поддержка загрузки txt, pdf и docx с извлечением текста на сервере.",
+    "Сессии повторения по SM-2 с оценкой и планированием.",
+    "Управление колодами и карточками, защищенное аутентификацией Supabase.",
+    "Сводная статистика по карточкам к повторению, выученным и повторенным."
+  ],
+  "sprints": [
+    { "sprint": 1, "name": "Инициация", "score": 10, "maxScore": 10, "completed": true },
+    { "sprint": 2, "name": "Архитектура", "score": 10, "maxScore": 10, "completed": true },
+    { "sprint": 3, "name": "MVP", "score": 10, "maxScore": 10, "completed": true },
+    { "sprint": 4, "name": "Infrastructure", "score": 20, "maxScore": 20, "completed": true },
+    { "sprint": 5, "name": "Тестирование", "score": 10, "maxScore": 10, "completed": true },
+    { "sprint": 6, "name": "Demo Day", "score": 10, "maxScore": 10, "completed": true },
+    { "sprint": 7, "name": "Рецензирование", "score": 10, "maxScore": 10, "completed": true }
+  ],
+  "peerReviews": [],
+  "totalCourseScore": null,
+  "year": 2025,
+  "semester": "TBD",
+  "status": "in-progress",
+  "featured": false,
+  "startDate": "TBD",
+  "endDate": "TBD",
+  "sourceProjectId": "auto-flashcards"
+}
