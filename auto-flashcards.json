@@ -73,8 +73,17 @@
     "roadmap": "https://github.com/vstu-sii/bachelor-2025-team-codex/tree/d1-prd"
   },
   "media": {
-    "cover": "",
-    "screenshots": []
+    "cover": "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/cover.png",
+    "screenshots": [
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/01-home.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/02-login.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/03-profile.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/04-decks.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/06-review.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/07-stats.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/09-langfuse.png",
+      "https://raw.githubusercontent.com/vstu-sii/bachelor-2025-team-codex/lab6-demo-day/docs/media/10-register.png"
+    ]
   },
   "techStack": {
     "frontend": ["Next.js", "React", "Tailwind CSS", "next-intl"],
@@ -87,11 +96,11 @@
   "achievements": [],
   "metrics": {
     "scores": {
-      "functionality": null,
-      "codeQuality": null,
-      "documentation": null,
-      "presentation": null,
-      "innovation": null
+      "functionality": 5,
+      "codeQuality": 4,
+      "documentation": 4,
+      "presentation": 5,
+      "innovation": 5
     },
     "totalScore": 23,
     "techMetrics": {
@@ -120,10 +129,9 @@
   "peerReviews": [],
   "totalCourseScore": null,
   "year": 2025,
-  "semester": "TBD",
   "status": "in-progress",
-  "featured": false,
-  "startDate": "TBD",
-  "endDate": "TBD",
+  "featured": true,
+"startDate": "2025-09-01",
+  "endDate": "2025-12-15",
   "sourceProjectId": "auto-flashcards"
 }
